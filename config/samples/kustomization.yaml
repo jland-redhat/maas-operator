@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- myapp_v1alpha1_maasplatform.yaml
+- myapp_v1alpha1_tier.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

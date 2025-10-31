@@ -1,0 +1,223 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: maasplatforms.myapp.io.odh.maas
+spec:
+  group: myapp.io.odh.maas
+  names:
+    kind: MaasPlatform
+    listKind: MaasPlatformList
+    plural: maasplatforms
+    singular: maasplatform
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: MaasPlatform is the Schema for the maasplatforms API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasPlatformSpec defines the desired state of MaasPlatform.
+            properties:
+              policies:
+                description: Policies configuration for authentication, rate limiting,
+                  and token rate limiting
+                properties:
+                  authentication:
+                    description: Authentication policy configuration
+                    properties:
+                      authorization:
+                        description: Authorization rules for tier-based access control
+                        properties:
+                          enabled:
+                            description: Enable tier-based authorization
+                            type: boolean
+                          resourceAttributes:
+                            description: Resource attributes for Kubernetes Subject
+                              Access Review
+                            properties:
+                              group:
+                                description: |-
+                                  API group for the resource
+                                  Default: serving.kserve.io
+                                type: string
+                              nameExpression:
+                                description: |-
+                                  Name extraction expression from request path
+                                  Default: request.path.split("/")[2]
+                                type: string
+                              namespaceExpression:
+                                description: |-
+                                  Namespace extraction expression from request path
+                                  Default: request.path.split("/")[1]
+                                type: string
+                              resource:
+                                description: |-
+                                  Resource type
+                                  Default: llminferenceservices
+                                type: string
+                              verb:
+                                description: |-
+                                  Verb for the resource access
+                                  Default: post
+                                type: string
+                            type: object
+                        type: object
+                      enabled:
+                        default: true
+                        description: Enable authentication policy
+                        type: boolean
+                      openshiftIdentities:
+                        description: OpenShift identities configuration for token
+                          validation
+                        properties:
+                          audiences:
+                            description: Kubernetes token review audiences
+                            items:
+                              type: string
+                            type: array
+                          userIDExpression:
+                            description: |-
+                              User ID extraction expression for token normalization
+                              Default: extracts the last component of system:serviceaccount:<ns>:<name>
+                            type: string
+                        type: object
+                      responseFilters:
+                        description: Response filters for enriching response with
+                          identity information
+                        properties:
+                          enabled:
+                            description: Enable response filters
+                            type: boolean
+                          includeTier:
+                            description: Include tier information in response
+                            type: boolean
+                          includeUserID:
+                            description: Include user ID in response
+                            type: boolean
+                        type: object
+                      tierMetadata:
+                        description: Tier metadata lookup configuration for enriching
+                          identity with subscription tier
+                        properties:
+                          apiEndpoint:
+                            description: |-
+                              API endpoint URL for tier lookup service
+                              Default: http://maas-api.maas-api.svc.cluster.local:8080/v1/tiers/lookup
+                            type: string
+                          cacheKeySelector:
+                            description: |-
+                              Cache key selector for tier metadata caching
+                              Default: auth.identity.user.username
+                            type: string
+                          cacheTTL:
+                            default: 300
+                            description: |-
+                              Cache TTL in seconds for tier metadata
+                              Default: 300 (5 minutes)
+                            format: int32
+                            type: integer
+                        type: object
+                    type: object
+                  rateLimits:
+                    description: Rate limiting policy configuration
+                    properties:
+                      enabled:
+                        default: true
+                        description: Enable rate limiting policy
+                        type: boolean
+                      tiers:
+                        additionalProperties:
+                          description: TierRateLimit defines rate limit configuration
+                            for a specific tier.
+                          properties:
+                            counters:
+                              description: |-
+                                Counter expressions for rate limit tracking
+                                Default: ["auth.identity.userid"]
+                              items:
+                                type: string
+                              type: array
+                            limit:
+                              description: Maximum number of requests allowed
+                              format: int32
+                              type: integer
+                            window:
+                              description: Time window for the rate limit (e.g., "2m",
+                                "1h")
+                              type: string
+                          required:
+                          - limit
+                          - window
+                          type: object
+                        description: |-
+                          Tier-based rate limits
+                          Key is the tier name (e.g., "free", "premium", "enterprise")
+                        type: object
+                    type: object
+                  tokenRateLimits:
+                    description: Token rate limiting policy configuration
+                    properties:
+                      enabled:
+                        default: true
+                        description: Enable token rate limiting policy
+                        type: boolean
+                      tiers:
+                        additionalProperties:
+                          description: TierTokenLimit defines token rate limit configuration
+                            for a specific tier.
+                          properties:
+                            counters:
+                              description: |-
+                                Counter expressions for token rate limit tracking
+                                Default: ["auth.identity.userid"]
+                              items:
+                                type: string
+                              type: array
+                            limit:
+                              description: Maximum number of tokens allowed
+                              format: int32
+                              type: integer
+                            window:
+                              description: Time window for the token rate limit (e.g.,
+                                "1m", "1h")
+                              type: string
+                          required:
+                          - limit
+                          - window
+                          type: object
+                        description: |-
+                          Tier-based token rate limits
+                          Key is the tier name (e.g., "free", "premium", "enterprise")
+                        type: object
+                    type: object
+                type: object
+            type: object
+          status:
+            description: MaasPlatformStatus defines the observed state of MaasPlatform.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

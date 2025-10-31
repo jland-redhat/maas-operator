@@ -1,0 +1,9 @@
+apiVersion: myapp.io.odh.maas/v1alpha1
+kind: Tier
+metadata:
+  labels:
+    app.kubernetes.io/name: maas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: tier-sample
+spec:
+  # TODO(user): Add fields here

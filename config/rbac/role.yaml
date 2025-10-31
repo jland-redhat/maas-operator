@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - myapp.io.odh.maas
+  resources:
+  - maasplatforms
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - myapp.io.odh.maas
+  resources:
+  - maasplatforms/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - myapp.io.odh.maas
+  resources:
+  - maasplatforms/status
+  verbs:
+  - get
+  - patch
+  - update
