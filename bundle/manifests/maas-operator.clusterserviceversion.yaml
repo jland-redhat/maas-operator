@@ -1,0 +1,342 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "myapp.io.odh.maas/v1alpha1",
+          "kind": "MaasPlatform",
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "maas-operator"
+            },
+            "name": "maasplatform-sample"
+          },
+          "spec": {}
+        },
+        {
+          "apiVersion": "myapp.io.odh.maas/v1alpha1",
+          "kind": "Tier",
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "maas-operator"
+            },
+            "name": "tier-sample"
+          },
+          "spec": {
+            "models": [
+              "facebook/opt-125m",
+              "gpt-3.5-turbo"
+            ],
+            "rateLimits": {
+              "limit": 10,
+              "window": "2m"
+            },
+            "targetRef": {
+              "name": "maasplatform-sample"
+            },
+            "tokenRateLimits": {
+              "limit": 1000,
+              "window": "1m"
+            }
+          }
+        }
+      ]
+    capabilities: Basic Install
+    categories: AI/Machine Learning, Integration & Delivery
+    certified: "false"
+    containerImage: controller:latest
+    createdAt: "2025-11-28T16:57:03Z"
+    description: Kubernetes operator for managing Model-as-a-Service (MaaS) platform
+      deployments
+    operators.operatorframework.io/builder: operator-sdk-v1.42.0
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+    repository: https://github.com/jland-redhat/maas-operator
+    support: Red Hat
+  name: maas-operator.v0.1.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: MaasPlatform is the Schema for the maasplatforms API.
+      displayName: Maas Platform
+      kind: MaasPlatform
+      name: maasplatforms.myapp.io.odh.maas
+      version: v1alpha1
+    - description: Tier is the Schema for the tiers API.
+      displayName: Tier
+      kind: Tier
+      name: tiers.myapp.io.odh.maas
+      version: v1alpha1
+  description: "## Overview\n\nThe MaaS Operator automates the installation and configuration
+    of Model-as-a-Service (MaaS) platform \ninfrastructure on Kubernetes and OpenShift
+    clusters. It manages gateway setup, authentication policies, \nrate limiting,
+    and observability components for AI/ML model serving.\n\n## Features\n\n* **Platform
+    Management**: Automated deployment of MaaS API components and networking infrastructure\n*
+    **Gateway Configuration**: Sets up API gateways with authentication and routing
+    policies\n* **Rate Limiting**: Tier-based rate limiting for API requests and token
+    consumption\n* **Multi-Tier Support**: Define multiple tiers with different rate
+    limits and model access\n* **KServe Integration**: Works with KServe for model
+    serving\n* **Kuadrant Integration**: Leverages Kuadrant for API gateway policies\n\n##
+    Prerequisites\n\nBefore installing this operator, ensure you have:\n\n* **OpenDataHub
+    (ODH)** with KServe enabled for model serving\n* **Kuadrant, Authorino, and Limitador**
+    operators for API gateway policies\n* **cert-manager** for certificate management\n*
+    Gateway API support enabled in your cluster\n\n## Getting Started\n\nAfter installing
+    the operator:\n\n1. Create a `MaasPlatform` resource to deploy the platform infrastructure\n2.
+    Create `Tier` resources to define rate limiting policies and model access\n3.
+    Deploy models using KServe InferenceService\n4. Access models through the configured
+    API gateway\n\n## Documentation\n\nFor detailed documentation, visit: https://github.com/jland-redhat/maas-operator\n"
+  displayName: MaaS Operator
+  icon:
+  - base64data: PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTguNTEgMjU4LjUxIj48ZGVmcz48c3R5bGU+LmNscy0xe2ZpbGw6I2QxZDFkMTt9LmNscy0ye2ZpbGw6I2UwMDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPkFzc2V0IDE8L3RpdGxlPjxnIGlkPSJMYXllcl8yIiBkYXRhLW5hbWU9IkxheWVyIDIiPjxnIGlkPSJMYXllcl8xLTIiIGRhdGEtbmFtZT0iTGF5ZXIgMSI+PHBhdGggY2xhc3M9ImNscy0xIiBkPSJNMTI5LjI1LDI1OC41MUE3NC42Miw3NC42MiwwLDAsMSw3NCwyMzcuODVhNzUuNDEsNzUuNDEsMCwwLDEtMjItNTMuMzZWNzMuNzZBNzQuMiw3NC4yLDAsMCwxLDEyOS4yNSwwYTc0LjIsNzQuMiwwLDAsMSw3Ny4yNyw3My43NnYxMTAuNzNBNzQuMiw3NC4yLDAsMCwxLDEyOS4yNSwyNTguNTFaIi8+PHBhdGggY2xhc3M9ImNscy0yIiBkPSJNMTYwLjgsOTguNTVWNzMuNzZhMzEuNTUsMzEuNTUsMCwxLDAtNjMuMSwwdjI0Ljc5QTMxLjU1LDMxLjU1LDAsMCwwLDE2MC44LDk4LjU1WiIvPjxwYXRoIGNsYXNzPSJjbHMtMiIgZD0iTTE2MC44LDE4NC40OVYxNTkuN2EzMS41NSwzMS41NSwwLDEsMC02My4xLDB2MjQuNzlBMzEuNTUsMzEuNTUsMCwwLDAsMTYwLjgsMTg0LjQ5WiIvPjwvZz48L2c+PC9zdmc+
+    mediatype: image/svg+xml
+  install:
+    spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          - secrets
+          - serviceaccounts
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - gateway.networking.k8s.io
+          resources:
+          - gatewayclasses
+          - gateways
+          - httproutes
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - kuadrant.io
+          resources:
+          - authpolicies
+          - kuadrants
+          - ratelimitpolicies
+          - tokenratelimitpolicies
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - myapp.io.odh.maas
+          resources:
+          - maasplatforms
+          - tiers
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - myapp.io.odh.maas
+          resources:
+          - maasplatforms/finalizers
+          - tiers/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - myapp.io.odh.maas
+          resources:
+          - maasplatforms/status
+          - tiers/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - clusterrolebindings
+          - clusterroles
+          - rolebindings
+          - roles
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - authentication.k8s.io
+          resources:
+          - tokenreviews
+          verbs:
+          - create
+        - apiGroups:
+          - authorization.k8s.io
+          resources:
+          - subjectaccessreviews
+          verbs:
+          - create
+        serviceAccountName: maas-operator-controller-manager
+      deployments:
+      - label:
+          app.kubernetes.io/managed-by: kustomize
+          app.kubernetes.io/name: maas-operator
+          control-plane: controller-manager
+        name: maas-operator-controller-manager
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: maas-operator
+              control-plane: controller-manager
+          strategy: {}
+          template:
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
+              labels:
+                app.kubernetes.io/name: maas-operator
+                control-plane: controller-manager
+            spec:
+              containers:
+              - args:
+                - --metrics-bind-address=:8443
+                - --leader-elect
+                - --health-probe-bind-address=:8081
+                command:
+                - /manager
+                image: quay.io/maas/maas-operator:v0.1.0
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                name: manager
+                readinessProbe:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                resources:
+                  limits:
+                    cpu: 500m
+                    memory: 128Mi
+                  requests:
+                    cpu: 10m
+                    memory: 64Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+              securityContext:
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              serviceAccountName: maas-operator-controller-manager
+              terminationGracePeriodSeconds: 10
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        serviceAccountName: maas-operator-controller-manager
+    strategy: deployment
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - maas
+  - model-as-a-service
+  - ai
+  - ml
+  - machine-learning
+  - kserve
+  - gateway
+  - rate-limiting
+  links:
+  - name: GitHub Repository
+    url: https://github.com/jland-redhat/maas-operator
+  - name: OpenDataHub
+    url: https://opendatahub.io
+  - name: KServe
+    url: https://kserve.github.io/website/
+  maintainers:
+  - email: jland@redhat.com
+    name: Red Hat MaaS Team
+  maturity: alpha
+  minKubeVersion: 1.23.0
+  provider:
+    name: Red Hat
+    url: https://www.redhat.com
+  version: 0.1.0

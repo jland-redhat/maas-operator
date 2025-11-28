@@ -1,0 +1,13 @@
+apiVersion: myapp.io.odh.maas/v1alpha1
+kind: MaasPlatform
+metadata:
+  name: maas-platform
+  namespace: maas-system
+  labels:
+    app.kubernetes.io/name: maas-operator
+    app.kubernetes.io/component: platform
+    app.kubernetes.io/part-of: model-as-a-service
+    app.kubernetes.io/managed-by: maas-operator
+  annotations:
+    description: "Main MaaS Platform instance for managing model serving infrastructure"
+spec: {}

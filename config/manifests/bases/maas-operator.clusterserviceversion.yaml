@@ -1,0 +1,92 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+    categories: AI/Machine Learning, Integration & Delivery
+    certified: "false"
+    containerImage: controller:latest
+    createdAt: "2024-01-01T00:00:00Z"
+    description: Kubernetes operator for managing Model-as-a-Service (MaaS) platform
+      deployments
+    operators.operatorframework.io/builder: operator-sdk-v1.42.0
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+    repository: https://github.com/jland-redhat/maas-operator
+    support: Red Hat
+  name: maas-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: MaasPlatform is the Schema for the maasplatforms API.
+      displayName: Maas Platform
+      kind: MaasPlatform
+      name: maasplatforms.myapp.io.odh.maas
+      version: v1alpha1
+    - description: Tier is the Schema for the tiers API.
+      displayName: Tier
+      kind: Tier
+      name: tiers.myapp.io.odh.maas
+      version: v1alpha1
+  description: "## Overview\n\nThe MaaS Operator automates the installation and configuration
+    of Model-as-a-Service (MaaS) platform \ninfrastructure on Kubernetes and OpenShift
+    clusters. It manages gateway setup, authentication policies, \nrate limiting,
+    and observability components for AI/ML model serving.\n\n## Features\n\n* **Platform
+    Management**: Automated deployment of MaaS API components and networking infrastructure\n*
+    **Gateway Configuration**: Sets up API gateways with authentication and routing
+    policies\n* **Rate Limiting**: Tier-based rate limiting for API requests and token
+    consumption\n* **Multi-Tier Support**: Define multiple tiers with different rate
+    limits and model access\n* **KServe Integration**: Works with KServe for model
+    serving\n* **Kuadrant Integration**: Leverages Kuadrant for API gateway policies\n\n##
+    Prerequisites\n\nBefore installing this operator, ensure you have:\n\n* **OpenDataHub
+    (ODH)** with KServe enabled for model serving\n* **Kuadrant, Authorino, and Limitador**
+    operators for API gateway policies\n* **cert-manager** for certificate management\n*
+    Gateway API support enabled in your cluster\n\n## Getting Started\n\nAfter installing
+    the operator:\n\n1. Create a `MaasPlatform` resource to deploy the platform infrastructure\n2.
+    Create `Tier` resources to define rate limiting policies and model access\n3.
+    Deploy models using KServe InferenceService\n4. Access models through the configured
+    API gateway\n\n## Documentation\n\nFor detailed documentation, visit: https://github.com/jland-redhat/maas-operator\n"
+  displayName: MaaS Operator
+  icon:
+  - base64data: PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTguNTEgMjU4LjUxIj48ZGVmcz48c3R5bGU+LmNscy0xe2ZpbGw6I2QxZDFkMTt9LmNscy0ye2ZpbGw6I2UwMDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPkFzc2V0IDE8L3RpdGxlPjxnIGlkPSJMYXllcl8yIiBkYXRhLW5hbWU9IkxheWVyIDIiPjxnIGlkPSJMYXllcl8xLTIiIGRhdGEtbmFtZT0iTGF5ZXIgMSI+PHBhdGggY2xhc3M9ImNscy0xIiBkPSJNMTI5LjI1LDI1OC41MUE3NC42Miw3NC42MiwwLDAsMSw3NCwyMzcuODVhNzUuNDEsNzUuNDEsMCwwLDEtMjItNTMuMzZWNzMuNzZBNzQuMiw3NC4yLDAsMCwxLDEyOS4yNSwwYTc0LjIsNzQuMiwwLDAsMSw3Ny4yNyw3My43NnYxMTAuNzNBNzQuMiw3NC4yLDAsMCwxLDEyOS4yNSwyNTguNTFaIi8+PHBhdGggY2xhc3M9ImNscy0yIiBkPSJNMTYwLjgsOTguNTVWNzMuNzZhMzEuNTUsMzEuNTUsMCwxLDAtNjMuMSwwdjI0Ljc5QTMxLjU1LDMxLjU1LDAsMCwwLDE2MC44LDk4LjU1WiIvPjxwYXRoIGNsYXNzPSJjbHMtMiIgZD0iTTE2MC44LDE4NC40OVYxNTkuN2EzMS41NSwzMS41NSwwLDEsMC02My4xLDB2MjQuNzlBMzEuNTUsMzEuNTUsMCwwLDAsMTYwLjgsMTg0LjQ5WiIvPjwvZz48L2c+PC9zdmc+
+    mediatype: image/svg+xml
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - maas
+  - model-as-a-service
+  - ai
+  - ml
+  - machine-learning
+  - kserve
+  - gateway
+  - rate-limiting
+  links:
+  - name: GitHub Repository
+    url: https://github.com/jland-redhat/maas-operator
+  - name: OpenDataHub
+    url: https://opendatahub.io
+  - name: KServe
+    url: https://kserve.github.io/website/
+  maintainers:
+  - email: jland@redhat.com
+    name: Red Hat MaaS Team
+  maturity: alpha
+  minKubeVersion: 1.23.0
+  provider:
+    name: Red Hat
+    url: https://www.redhat.com
+  version: 0.0.0

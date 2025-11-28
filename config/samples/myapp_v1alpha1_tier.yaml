@@ -6,4 +6,23 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: tier-sample
 spec:
-  # TODO(user): Add fields here
+  # Reference to the MaasPlatform this tier applies to
+  targetRef:
+    name: maasplatform-sample
+    # namespace is optional, defaults to same namespace as Tier
+  
+  # Request rate limits
+  rateLimits:
+    limit: 10
+    window: "2m"
+    # counters are optional, default: ["auth.identity.userid"]
+  
+  # Token rate limits (from model responses)
+  tokenRateLimits:
+    limit: 1000
+    window: "1m"
+  
+  # Models this tier applies to (empty = all models)
+  models:
+    - "facebook/opt-125m"
+    - "gpt-3.5-turbo"
