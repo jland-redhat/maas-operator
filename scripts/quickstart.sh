@@ -18,6 +18,8 @@ DEPLOY_MODE="kind"  # "kind", "cluster", or "olm"
 BUILD_IMAGE=true
 PUSH_IMAGE=false
 VERSION="${VERSION:-0.0.1}"
+INSTALL_OPERATOR=false  # For OLM mode: actually install the operator via Subscription
+OPERATOR_NAMESPACE="openshift-operators"  # Default to all namespaces installation
 
 # Colors for output
 RED='\033[0;31m'
@@ -55,6 +57,8 @@ Options:
     --bundle-image IMAGE      Bundle image name (for OLM only, default: \${IMAGE}-bundle:v\${VERSION})
     --catalog-image IMAGE     Catalog image name (for OLM only, default: \${IMAGE}-catalog:v\${VERSION})
     --version VERSION         Operator version (default: 0.0.1)
+    --install                 (OLM only) Automatically install the operator via Subscription
+    --namespace NAMESPACE     (OLM only) Namespace to install operator (default: openshift-operators for all namespaces)
     --no-build                Skip building the image (use existing image)
     --push                    Push image to registry (required for existing clusters and OLM)
     --container-tool TOOL      Container tool to use: podman or docker (default: podman)
@@ -80,6 +84,9 @@ Examples:
 
     # Deploy to OpenShift using OLM (shows up in Installed Operators)
     $0 --olm --image quay.io/maas/maas-operator:v0.1.0 --version 0.1.0 --push
+
+    # Deploy to OpenShift using OLM and auto-install via Subscription
+    $0 --olm --image quay.io/maas/maas-operator:v0.1.0 --version 0.1.0 --push --install
 
     # Deploy to OpenShift using OLM with existing images
     $0 --olm --image quay.io/maas/maas-operator:v0.1.0 --version 0.1.0 --no-build
@@ -124,6 +131,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --version)
             VERSION="$2"
+            shift 2
+            ;;
+        --install)
+            INSTALL_OPERATOR=true
+            shift
+            ;;
+        --namespace)
+            OPERATOR_NAMESPACE="$2"
             shift 2
             ;;
         --no-build)
@@ -412,32 +427,137 @@ EOF
     info "Catalog image: ${CATALOG_IMAGE_NAME}"
     info "CatalogSource namespace: ${CATALOG_NAMESPACE}"
     info ""
-    info "Next steps:"
-    if [[ "$IS_OPENSHIFT" == true ]]; then
-        info "  1. Install the operator from OpenShift Console:"
-        info "     - Navigate to: Operators → OperatorHub"
-        info "     - Search for: 'MaaS Operator'"
-        info "     - Click 'Install' and follow the wizard"
+    
+    # Optionally install the operator via Subscription
+    if [[ "$INSTALL_OPERATOR" == true ]]; then
+        info "Installing operator via Subscription..."
+        
+        # Create namespace if it doesn't exist and it's not openshift-operators
+        if [[ "$OPERATOR_NAMESPACE" != "openshift-operators" ]]; then
+            kubectl create namespace "$OPERATOR_NAMESPACE" 2>/dev/null || true
+            info "Created namespace: ${OPERATOR_NAMESPACE}"
+        fi
+        
+        # Create OperatorGroup if not in openshift-operators
+        if [[ "$OPERATOR_NAMESPACE" != "openshift-operators" ]]; then
+            info "Creating OperatorGroup..."
+            cat <<EOF | kubectl apply -f -
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: maas-operator-group
+  namespace: ${OPERATOR_NAMESPACE}
+spec:
+  targetNamespaces:
+  - ${OPERATOR_NAMESPACE}
+EOF
+        fi
+        
+        # Create Subscription
+        info "Creating Subscription..."
+        cat <<EOF | kubectl apply -f -
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: maas-operator
+  namespace: ${OPERATOR_NAMESPACE}
+spec:
+  channel: alpha
+  name: maas-operator
+  source: maas-operator-catalog
+  sourceNamespace: ${CATALOG_NAMESPACE}
+  installPlanApproval: Automatic
+EOF
+        
+        # Wait for CSV to be created
+        info "Waiting for ClusterServiceVersion to be created..."
+        for i in {1..30}; do
+            if kubectl get csv -n "$OPERATOR_NAMESPACE" 2>/dev/null | grep -q "maas-operator"; then
+                break
+            fi
+            sleep 2
+        done
+        
+        # Check for pending install plans that need approval
+        info "Checking for install plans..."
+        INSTALL_PLAN=$(kubectl get installplan -n "$OPERATOR_NAMESPACE" -o json 2>/dev/null | \
+            jq -r '.items[] | select(.spec.clusterServiceVersionNames[] | contains("maas-operator")) | select(.spec.approved == false) | .metadata.name' | head -1)
+        
+        if [[ -n "$INSTALL_PLAN" ]]; then
+            info "Approving install plan: ${INSTALL_PLAN}"
+            kubectl patch installplan "$INSTALL_PLAN" -n "$OPERATOR_NAMESPACE" --type merge -p '{"spec":{"approved":true}}'
+            sleep 3
+        fi
+        
+        # Wait for CSV to be ready
+        info "Waiting for operator to be ready..."
+        CSV_NAME=$(kubectl get csv -n "$OPERATOR_NAMESPACE" -o name 2>/dev/null | grep maas-operator | head -1)
+        if [[ -n "$CSV_NAME" ]]; then
+            kubectl wait --for=jsonpath='{.status.phase}'=Succeeded \
+                "$CSV_NAME" -n "$OPERATOR_NAMESPACE" --timeout=120s || {
+                warn "Operator may still be installing..."
+            }
+            
+            info "✅ Operator installed successfully!"
+            info ""
+            info "Operator details:"
+            kubectl get csv -n "$OPERATOR_NAMESPACE" | grep maas-operator
+            info ""
+            info "Operator pods:"
+            kubectl get pods -n "$OPERATOR_NAMESPACE" | grep maas-operator
+        else
+            warn "Could not find CSV. Check status with: kubectl get csv -n ${OPERATOR_NAMESPACE}"
+        fi
+        
         info ""
+        info "Next steps:"
+        info "  1. Create a MaasPlatform resource:"
+        info "     kubectl apply -f config/samples/myapp_v1alpha1_maasplatform.yaml"
+        info ""
+        info "  2. View operator in OpenShift Console:"
+        info "     Operators → Installed Operators → MaaS Operator"
+        info ""
+        info "  3. To uninstall:"
+        info "     kubectl delete subscription maas-operator -n ${OPERATOR_NAMESPACE}"
+        info "     kubectl delete csv -n ${OPERATOR_NAMESPACE} \$(kubectl get csv -n ${OPERATOR_NAMESPACE} -o name | grep maas-operator)"
+    else
+        info "Next steps:"
+        if [[ "$IS_OPENSHIFT" == true ]]; then
+            info "  1. Install the operator from OpenShift Console:"
+            info "     - Navigate to: Operators → OperatorHub"
+            info "     - Search for: 'MaaS Operator'"
+            info "     - Click 'Install' and follow the wizard"
+            info ""
+        fi
+        info "  Install via CLI:"
+        info "     kubectl create namespace maas-operator-system"
+        info "     cat <<YAML | kubectl apply -f -"
+        info "apiVersion: operators.coreos.com/v1alpha1"
+        info "kind: Subscription"
+        info "metadata:"
+        info "  name: maas-operator"
+        info "  namespace: maas-operator-system"
+        info "spec:"
+        info "  channel: alpha"
+        info "  name: maas-operator"
+        info "  source: maas-operator-catalog"
+        info "  sourceNamespace: ${CATALOG_NAMESPACE}"
+        info "YAML"
+        info ""
+        info "  Or use --install flag to auto-install:"
+        info "     $0 --olm --image ${IMAGE_NAME} --version ${VERSION} --no-build --install"
     fi
-    info "  Install via CLI:"
-    info "     kubectl create namespace maas-operator-system"
-    info "     cat <<YAML | kubectl apply -f -"
-    info "apiVersion: operators.coreos.com/v1alpha1"
-    info "kind: Subscription"
-    info "metadata:"
-    info "  name: maas-operator"
-    info "  namespace: maas-operator-system"
-    info "spec:"
-    info "  channel: alpha"
-    info "  name: maas-operator"
-    info "  source: maas-operator-catalog"
-    info "  sourceNamespace: ${CATALOG_NAMESPACE}"
-    info "YAML"
+    
+    info ""
+    info "  Upgrade existing installation:"
+    info "     # Delete old CSV to trigger upgrade"
+    info "     kubectl delete csv -n ${OPERATOR_NAMESPACE} -l operators.coreos.com/maas-operator.${OPERATOR_NAMESPACE}="
+    info "     # Watch for new version to install"
+    info "     kubectl get csv -n ${OPERATOR_NAMESPACE} -w"
     info ""
     info "  Verify installation:"
-    info "     kubectl get csv -n maas-operator-system"
-    info "     kubectl get pods -n maas-operator-system"
+    info "     kubectl get csv -n ${OPERATOR_NAMESPACE}"
+    info "     kubectl get pods -n ${OPERATOR_NAMESPACE}"
     info ""
     info "  To uninstall the CatalogSource:"
     info "     kubectl delete catalogsource maas-operator-catalog -n ${CATALOG_NAMESPACE}"

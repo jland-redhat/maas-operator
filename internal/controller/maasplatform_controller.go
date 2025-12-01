@@ -19,9 +19,10 @@ package controller
 import (
 	"bytes"
 	"context"
+	"embed"
 	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -34,6 +35,9 @@ import (
 	myappv1alpha1 "github.com/jland-redhat/maas-operator.git/api/v1alpha1"
 )
 
+//go:embed manifests
+var manifestsFS embed.FS
+
 // MaasPlatformReconciler reconciles a MaasPlatform object
 type MaasPlatformReconciler struct {
 	client.Client
@@ -44,10 +48,14 @@ type MaasPlatformReconciler struct {
 // +kubebuilder:rbac:groups=myapp.io.odh.maas,resources=maasplatforms/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=myapp.io.odh.maas,resources=maasplatforms/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=services;configmaps;serviceaccounts;secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=namespaces;services;configmaps;serviceaccounts;secrets;pods;endpoints;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=serviceaccounts/token,verbs=create
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways;gatewayclasses;httproutes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kuadrant.io,resources=kuadrants;authpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=config.openshift.io,resources=ingresses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices;llminferenceservices,verbs=get;list;watch
+// +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state specified by
@@ -66,49 +74,30 @@ func (r *MaasPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	// Find the maas-billing deployment directory
-	// The path should be set via environment variable or discovered relative to operator
-	deploymentBase := os.Getenv("MAAS_DEPLOYMENT_BASE")
-	if deploymentBase == "" {
-		// Try multiple possible locations
-		possiblePaths := []string{
-			filepath.Join("..", "maas-billing", "deployment", "base"),
-			filepath.Join("..", "..", "..", "maas-billing", "deployment", "base"),
-			filepath.Join(".", "maas-billing", "deployment", "base"),
-		}
-
-		for _, path := range possiblePaths {
-			if info, err := os.Stat(path); err == nil && info.IsDir() {
-				deploymentBase = path
-				break
-			}
-		}
-
-		if deploymentBase == "" {
-			return ctrl.Result{}, fmt.Errorf("cannot find deployment base directory. Set MAAS_DEPLOYMENT_BASE environment variable or ensure maas-billing/deployment/base exists relative to operator")
-		}
+	// Create required namespaces
+	log.Info("Ensuring required namespaces exist")
+	if err := r.ensureNamespaces(ctx); err != nil {
+		log.Error(err, "Failed to create required namespaces")
+		return ctrl.Result{}, err
 	}
 
 	// Deploy maas-api resources (excluding ConfigMap which will be managed by Tier)
 	log.Info("Deploying maas-api resources")
-	maasApiPath := filepath.Join(deploymentBase, "maas-api")
-	if err := r.deployResourcesFromPath(ctx, maasApiPath, maasPlatform, true); err != nil {
+	if err := r.deployEmbeddedManifest(ctx, "manifests/maas-api/resources.yaml", maasPlatform, true); err != nil {
 		log.Error(err, "Failed to deploy maas-api resources")
 		return ctrl.Result{}, err
 	}
 
 	// Deploy networking resources
 	log.Info("Deploying networking resources")
-	networkingPath := filepath.Join(deploymentBase, "networking")
-	if err := r.deployResourcesFromPath(ctx, networkingPath, maasPlatform, false); err != nil {
+	if err := r.deployEmbeddedManifest(ctx, "manifests/networking/resources.yaml", maasPlatform, false); err != nil {
 		log.Error(err, "Failed to deploy networking resources")
 		return ctrl.Result{}, err
 	}
 
 	// Deploy gateway-auth-policy
 	log.Info("Deploying gateway-auth-policy")
-	policyPath := filepath.Join(deploymentBase, "policies", "gateway-auth-policy.yaml")
-	if err := r.deploySingleResource(ctx, policyPath, maasPlatform); err != nil {
+	if err := r.deployEmbeddedManifest(ctx, "manifests/policies/gateway-auth-policy.yaml", maasPlatform, false); err != nil {
 		log.Error(err, "Failed to deploy gateway-auth-policy")
 		return ctrl.Result{}, err
 	}
@@ -122,117 +111,59 @@ func (r *MaasPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-// deployResourcesFromPath deploys resources from a kustomize directory or YAML file
-func (r *MaasPlatformReconciler) deployResourcesFromPath(ctx context.Context, path string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
-
-	// Check if path exists
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("path does not exist: %w", err)
+// ensureNamespaces creates required namespaces if they don't exist
+func (r *MaasPlatformReconciler) ensureNamespaces(ctx context.Context) error {
+	requiredNamespaces := []string{
+		"maas-api",
+		"kuadrant-system",
+		// Add more namespaces here if needed
 	}
 
-	// If it's a file, deploy it directly
-	if !info.IsDir() {
-		return r.deploySingleResource(ctx, path, maasPlatform, skipConfigMap)
-	}
-
-	// If it's a directory, check for kustomization.yaml
-	kustomizationPath := filepath.Join(path, "kustomization.yaml")
-	if _, err := os.Stat(kustomizationPath); err == nil {
-		// This is a kustomize directory - we'll need to expand it
-		// For now, let's read the kustomization and apply resources individually
-		return r.deployKustomizeDirectory(ctx, path, maasPlatform, skipConfigMap)
-	}
-
-	// If no kustomization, apply all YAML files in directory
-	return r.deployDirectoryYAMLs(ctx, path, maasPlatform, skipConfigMap)
-}
-
-// deployKustomizeDirectory handles kustomize directories
-func (r *MaasPlatformReconciler) deployKustomizeDirectory(ctx context.Context, path string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
-	// For now, we'll manually handle the resources listed in kustomization.yaml
-	// In production, you might want to use kustomize library or exec
-	log := logf.FromContext(ctx)
-	_ = log
-
-	kustomizationPath := filepath.Join(path, "kustomization.yaml")
-	data, err := os.ReadFile(kustomizationPath)
-	if err != nil {
-		return fmt.Errorf("failed to read kustomization.yaml: %w", err)
-	}
-
-	// Parse kustomization to find resources
-	var kustomization struct {
-		Resources []string `yaml:"resources"`
-	}
-	if err := yaml.Unmarshal(data, &kustomization); err != nil {
-		return fmt.Errorf("failed to parse kustomization.yaml: %w", err)
-	}
-
-	for _, resource := range kustomization.Resources {
-		resourcePath := filepath.Join(path, resource)
-		info, err := os.Stat(resourcePath)
-		if err != nil {
-			log.Info("Resource path does not exist, skipping", "path", resourcePath)
-			continue
+	for _, ns := range requiredNamespaces {
+		namespace := &unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "Namespace",
+				"metadata": map[string]interface{}{
+					"name": ns,
+				},
+			},
 		}
 
-		if info.IsDir() {
-			// Recursive directory
-			if err := r.deployResourcesFromPath(ctx, resourcePath, maasPlatform, skipConfigMap); err != nil {
-				log.Error(err, "Failed to deploy resource", "path", resourcePath)
-				// Continue with other resources
+		err := r.Get(ctx, client.ObjectKey{Name: ns}, namespace)
+		if errors.IsNotFound(err) {
+			// Create the namespace
+			if err := r.Create(ctx, namespace); err != nil {
+				return fmt.Errorf("failed to create namespace %s: %w", ns, err)
 			}
-		} else {
-			// YAML file
-			if err := r.deploySingleResource(ctx, resourcePath, maasPlatform, skipConfigMap); err != nil {
-				log.Error(err, "Failed to deploy resource", "path", resourcePath)
-				// Continue with other resources
-			}
+			logf.FromContext(ctx).Info("Created namespace", "namespace", ns)
+		} else if err != nil {
+			return fmt.Errorf("failed to check namespace %s: %w", ns, err)
 		}
 	}
 
 	return nil
 }
 
-// deployDirectoryYAMLs applies all YAML files in a directory
-func (r *MaasPlatformReconciler) deployDirectoryYAMLs(ctx context.Context, dir string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("failed to read directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
-			continue
-		}
-
-		filePath := filepath.Join(dir, entry.Name())
-		if err := r.deploySingleResource(ctx, filePath, maasPlatform, skipConfigMap); err != nil {
-			logf.FromContext(ctx).Error(err, "Failed to deploy YAML file", "file", filePath)
-			// Continue with other files
-		}
-	}
-
-	return nil
-}
-
-// deploySingleResource deploys a single YAML resource file
-func (r *MaasPlatformReconciler) deploySingleResource(ctx context.Context, filePath string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap ...bool) error {
+// deployEmbeddedManifest deploys a manifest from the embedded filesystem
+func (r *MaasPlatformReconciler) deployEmbeddedManifest(ctx context.Context, path string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
 	log := logf.FromContext(ctx)
 
-	data, err := os.ReadFile(filePath)
+	data, err := manifestsFS.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		return fmt.Errorf("failed to read embedded manifest %s: %w", path, err)
 	}
+
+	// Substitute environment variables
+	dataStr := string(data)
+	dataStr = r.substituteEnvVars(ctx, dataStr)
+	data = []byte(dataStr)
 
 	// Parse YAML (support multi-document YAML)
 	documents, err := splitYAMLDocuments(data)
 	if err != nil {
 		return fmt.Errorf("failed to parse YAML: %w", err)
 	}
-
-	skipCM := len(skipConfigMap) > 0 && skipConfigMap[0]
 
 	for _, doc := range documents {
 		if len(doc) == 0 {
@@ -241,19 +172,44 @@ func (r *MaasPlatformReconciler) deploySingleResource(ctx context.Context, fileP
 
 		var obj unstructured.Unstructured
 		if err := yaml.Unmarshal(doc, &obj.Object); err != nil {
-			log.Info("Skipping non-Kubernetes resource (failed to unmarshal)", "file", filePath)
+			log.Info("Skipping non-Kubernetes resource (failed to unmarshal)", "file", path)
 			continue
 		}
 
 		// Skip ConfigMap if requested
-		if skipCM && obj.GetKind() == "ConfigMap" && obj.GetName() == "tier-to-group-mapping" {
+		if skipConfigMap && obj.GetKind() == "ConfigMap" && obj.GetName() == "tier-to-group-mapping" {
 			log.Info("Skipping tier-to-group-mapping ConfigMap (managed by Tier controller)")
 			continue
 		}
 
-		// Set owner reference
-		if err := ctrl.SetControllerReference(maasPlatform, &obj, r.Scheme); err != nil {
-			log.Info("Failed to set owner reference, continuing anyway", "error", err)
+		// For PVCs, check if they already exist and skip update (PVCs are immutable)
+		if obj.GetKind() == "PersistentVolumeClaim" {
+			existing := &unstructured.Unstructured{}
+			existing.SetGroupVersionKind(obj.GroupVersionKind())
+			err := r.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existing)
+			if err == nil {
+				log.Info("PersistentVolumeClaim already exists, skipping update (PVCs are immutable)",
+					"name", obj.GetName(),
+					"namespace", obj.GetNamespace())
+				continue
+			} else if !errors.IsNotFound(err) {
+				return fmt.Errorf("failed to check existing PVC %s/%s: %w", obj.GetNamespace(), obj.GetName(), err)
+			}
+			// If not found, continue to create it
+		}
+
+		// Set owner reference (skip for cluster-scoped resources and cross-namespace resources)
+		// Owner references cannot span namespaces
+		if obj.GetNamespace() != "" && obj.GetNamespace() == maasPlatform.Namespace {
+			if err := ctrl.SetControllerReference(maasPlatform, &obj, r.Scheme); err != nil {
+				log.Info("Failed to set owner reference, continuing anyway", "error", err)
+			}
+		} else if obj.GetNamespace() != "" {
+			log.V(1).Info("Skipping owner reference for cross-namespace resource",
+				"kind", obj.GetKind(),
+				"name", obj.GetName(),
+				"namespace", obj.GetNamespace(),
+				"owner-namespace", maasPlatform.Namespace)
 		}
 
 		// Apply the resource
@@ -265,6 +221,58 @@ func (r *MaasPlatformReconciler) deploySingleResource(ctx context.Context, fileP
 	}
 
 	return nil
+}
+
+// substituteEnvVars replaces ${VAR} style variables in the manifest
+func (r *MaasPlatformReconciler) substituteEnvVars(ctx context.Context, content string) string {
+	log := logf.FromContext(ctx)
+
+	// Get CLUSTER_DOMAIN from cluster if not set
+	clusterDomain := os.Getenv("CLUSTER_DOMAIN")
+	if clusterDomain == "" {
+		// Try to detect from cluster ingress
+		var ingressConfig unstructured.Unstructured
+		ingressConfig.SetAPIVersion("config.openshift.io/v1")
+		ingressConfig.SetKind("Ingress")
+		err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, &ingressConfig)
+		if err == nil {
+			if domain, found, _ := unstructured.NestedString(ingressConfig.Object, "spec", "domain"); found {
+				clusterDomain = domain
+				log.Info("Detected cluster domain", "domain", clusterDomain)
+			}
+		}
+
+		if clusterDomain == "" {
+			clusterDomain = "apps.example.com"
+			log.Info("Using default cluster domain", "domain", clusterDomain)
+		}
+	}
+
+	// Replace variables
+	content = strings.ReplaceAll(content, "${CLUSTER_DOMAIN}", clusterDomain)
+	content = strings.ReplaceAll(content, "$CLUSTER_DOMAIN", clusterDomain)
+
+	return content
+}
+
+// deployResourcesFromPath is kept for backwards compatibility but no longer used
+func (r *MaasPlatformReconciler) deployResourcesFromPath(ctx context.Context, path string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
+	return fmt.Errorf("deprecated: use deployEmbeddedManifest instead")
+}
+
+// deployKustomizeDirectory is kept for backwards compatibility but no longer used
+func (r *MaasPlatformReconciler) deployKustomizeDirectory(ctx context.Context, path string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
+	return fmt.Errorf("deprecated: use deployEmbeddedManifest instead")
+}
+
+// deployDirectoryYAMLs is kept for backwards compatibility but no longer used
+func (r *MaasPlatformReconciler) deployDirectoryYAMLs(ctx context.Context, dir string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap bool) error {
+	return fmt.Errorf("deprecated: use deployEmbeddedManifest instead")
+}
+
+// deploySingleResource is kept for backwards compatibility but no longer used
+func (r *MaasPlatformReconciler) deploySingleResource(ctx context.Context, filePath string, maasPlatform *myappv1alpha1.MaasPlatform, skipConfigMap ...bool) error {
+	return fmt.Errorf("deprecated: use deployEmbeddedManifest instead")
 }
 
 // applyUnstructured applies an unstructured resource using server-side apply

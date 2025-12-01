@@ -49,14 +49,14 @@ metadata:
     categories: AI/Machine Learning, Integration & Delivery
     certified: "false"
     containerImage: controller:latest
-    createdAt: "2025-11-28T16:57:03Z"
+    createdAt: "2025-11-29T22:06:31Z"
     description: Kubernetes operator for managing Model-as-a-Service (MaaS) platform
       deployments
     operators.operatorframework.io/builder: operator-sdk-v1.42.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/jland-redhat/maas-operator
     support: Red Hat
-  name: maas-operator.v0.1.0
+  name: maas-operator.v0.2.4
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -102,6 +102,10 @@ spec:
           - ""
           resources:
           - configmaps
+          - endpoints
+          - namespaces
+          - persistentvolumeclaims
+          - pods
           - secrets
           - serviceaccounts
           - services
@@ -114,6 +118,12 @@ spec:
           - update
           - watch
         - apiGroups:
+          - ""
+          resources:
+          - serviceaccounts/token
+          verbs:
+          - create
+        - apiGroups:
           - apps
           resources:
           - deployments
@@ -124,6 +134,20 @@ spec:
           - list
           - patch
           - update
+          - watch
+        - apiGroups:
+          - authentication.k8s.io
+          resources:
+          - tokenreviews
+          verbs:
+          - create
+        - apiGroups:
+          - config.openshift.io
+          resources:
+          - ingresses
+          verbs:
+          - get
+          - list
           - watch
         - apiGroups:
           - gateway.networking.k8s.io
@@ -199,6 +223,15 @@ spec:
           - update
           - watch
         - apiGroups:
+          - serving.kserve.io
+          resources:
+          - inferenceservices
+          - llminferenceservices
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
           - authentication.k8s.io
           resources:
           - tokenreviews
@@ -239,7 +272,7 @@ spec:
                 - --health-probe-bind-address=:8081
                 command:
                 - /manager
-                image: quay.io/maas/maas-operator:v0.1.0
+                image: quay.io/maas/maas-operator:v0.2.4
                 livenessProbe:
                   httpGet:
                     path: /healthz
@@ -339,4 +372,4 @@ spec:
   provider:
     name: Red Hat
     url: https://www.redhat.com
-  version: 0.1.0
+  version: 0.2.4
